@@ -186,9 +186,16 @@ fn test_randomly() {
 /// The adversary will randomly take a message that is sent to one of its nodes and re-send it to
 /// a different node
 pub struct RandomAdversary<D: DistAlgorithm> {
+    /// The underlying scheduler used
     scheduler: MessageScheduler,
+
+    /// Collects node ids seen by the adversary.
     known_node_ids: Vec<D::NodeUid>,
+
+    /// Internal queue for messages to be returned on the next `Adversary::step()` call
     outgoing: Vec<MessageWithSender<D>>,
+
+    /// Probability of a message replay
     p_replay: f32,
 }
 
