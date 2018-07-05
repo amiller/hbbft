@@ -187,21 +187,6 @@ fn test_randomly() {
     assert!(!randomly(0.0));
 }
 
-// /// Picks a random element from a set
-// fn pick_random<'a, T>(set: &BTreeSet<T>) -> Option<&T> {
-//     let mut rng = rand::thread_rng();
-
-//     // ensure gen_range does not panic
-//     if set.len() == 0 {
-//         return None;
-//     }
-
-//     let idx = rng.gen_range(0, set.len());
-
-//     // note: this should never return None, since we checked the length beforehand
-//     set.iter().nth(idx)
-// }
-
 /// An adversary that performs naive replay attacks
 ///
 /// The adversary will randomly take a message that is sent to one of its nodes and re-send it to
