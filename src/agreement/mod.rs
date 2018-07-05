@@ -75,7 +75,7 @@ use itertools::Itertools;
 use agreement::bin_values::BinValues;
 use common_coin;
 use common_coin::{CommonCoin, CommonCoinMessage};
-use messaging::{DistAlgorithm, NetworkInfo, Target, TargetedMessage};
+use messaging::{DistAlgorithm, NetworkInfo, Step, Target, TargetedMessage};
 
 error_chain!{
     links {
@@ -191,6 +191,8 @@ pub struct Agreement<NodeUid> {
     coin_schedule: CoinSchedule,
 }
 
+pub type AgreementStep = Step<bool>;
+
 impl<NodeUid: Clone + Debug + Ord> DistAlgorithm for Agreement<NodeUid> {
     type NodeUid = NodeUid;
     type Input = bool;
@@ -198,7 +200,7 @@ impl<NodeUid: Clone + Debug + Ord> DistAlgorithm for Agreement<NodeUid> {
     type Message = AgreementMessage;
     type Error = Error;
 
-    fn input(&mut self, input: Self::Input) -> AgreementResult<()> {
+    fn input(&mut self, input: Self::Input) -> AgreementResult<AgreementStep> {
         self.set_input(input)
     }
 
@@ -207,22 +209,24 @@ impl<NodeUid: Clone + Debug + Ord> DistAlgorithm for Agreement<NodeUid> {
         &mut self,
         sender_id: &Self::NodeUid,
         message: Self::Message,
-    ) -> AgreementResult<()> {
+    ) -> AgreementResult<AgreementStep> {
         if self.terminated() || message.epoch < self.epoch {
-            return Ok(()); // Message is obsolete: We are already in a later epoch or terminated.
+            // Message is obsolete: We are already in a later epoch or terminated.
+            return self.step();
         }
         if message.epoch > self.epoch {
             // Message is for a later epoch. We can't handle that yet.
             self.incoming_queue.push((sender_id.clone(), message));
-            return Ok(());
+            return self.step();
         }
         match message.content {
-            AgreementContent::BVal(b) => self.handle_bval(sender_id, b),
-            AgreementContent::Aux(b) => self.handle_aux(sender_id, b),
-            AgreementContent::Conf(v) => self.handle_conf(sender_id, v),
-            AgreementContent::Term(v) => self.handle_term(sender_id, v),
-            AgreementContent::Coin(msg) => self.handle_coin(sender_id, *msg),
+            AgreementContent::BVal(b) => self.handle_bval(sender_id, b)?,
+            AgreementContent::Aux(b) => self.handle_aux(sender_id, b)?,
+            AgreementContent::Conf(v) => self.handle_conf(sender_id, v)?,
+            AgreementContent::Term(v) => self.handle_term(sender_id, v)?,
+            AgreementContent::Coin(msg) => self.handle_coin(sender_id, *msg)?,
         }
+        self.step()
     }
 
     /// Take the next Agreement message for multicast to all other nodes.
@@ -230,11 +234,6 @@ impl<NodeUid: Clone + Debug + Ord> DistAlgorithm for Agreement<NodeUid> {
         self.messages
             .pop_front()
             .map(|msg| Target::All.message(msg))
-    }
-
-    /// Consume the output. Once consumed, the output stays `None` forever.
-    fn next_output(&mut self) -> Option<Self::Output> {
-        self.output.take()
     }
 
     /// Whether the algorithm has terminated.
@@ -284,8 +283,12 @@ impl<NodeUid: Clone + Debug + Ord> Agreement<NodeUid> {
         }
     }
 
+    fn step(&mut self) -> AgreementResult<AgreementStep> {
+        Ok(Step::new(replace(&mut self.output, None)))
+    }
+
     /// Sets the input value for agreement.
-    pub fn set_input(&mut self, input: bool) -> AgreementResult<()> {
+    pub fn set_input(&mut self, input: bool) -> AgreementResult<AgreementStep> {
         if self.state != State::NotInitialized {
             return Err(ErrorKind::InputNotAccepted.into());
         }
@@ -294,14 +297,15 @@ impl<NodeUid: Clone + Debug + Ord> Agreement<NodeUid> {
             self.output = Some(input);
             self.state = State::Terminated;
             self.send_bval(input)?;
-            self.send_aux(input)
+            self.send_aux(input)?;
         } else {
             // Set the initial estimated value to the input value.
             self.estimated = Some(input);
             self.state = State::Initialized;
             // Record the input value as sent.
-            self.send_bval(input)
+            self.send_bval(input)?;
         }
+        self.step()
     }
 
     /// Acceptance check to be performed before setting the input value.
@@ -463,10 +467,10 @@ impl<NodeUid: Clone + Debug + Ord> Agreement<NodeUid> {
     /// Handles a Common Coin message. If there is output from Common Coin, starts the next
     /// epoch. The function may output a decision value.
     fn handle_coin(&mut self, sender_id: &NodeUid, msg: CommonCoinMessage) -> AgreementResult<()> {
-        self.common_coin.handle_message(sender_id, msg)?;
+        let coin_step = self.common_coin.handle_message(sender_id, msg)?;
         self.extend_common_coin();
 
-        if let Some(coin) = self.common_coin.next_output() {
+        if let Some(coin) = coin_step.output {
             let def_bin_value = self.count_conf().1.definite();
             self.on_coin(coin, def_bin_value)?;
         }

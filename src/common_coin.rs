@@ -23,11 +23,12 @@
 
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Debug;
+use std::mem::replace;
 use std::rc::Rc;
 
 use crypto::error as cerror;
 use crypto::Signature;
-use messaging::{DistAlgorithm, NetworkInfo, Target, TargetedMessage};
+use messaging::{DistAlgorithm, NetworkInfo, Step, Target, TargetedMessage};
 
 error_chain! {
     links {
@@ -77,6 +78,8 @@ pub struct CommonCoin<NodeUid, T> {
     terminated: bool,
 }
 
+pub type CommonCoinStep = Step<bool>;
+
 impl<NodeUid, T> DistAlgorithm for CommonCoin<NodeUid, T>
 where
     NodeUid: Clone + Debug + Ord,
@@ -89,22 +92,25 @@ where
     type Error = Error;
 
     /// Sends our threshold signature share if not yet sent.
-    fn input(&mut self, _input: Self::Input) -> Result<()> {
+    fn input(&mut self, _input: Self::Input) -> Result<CommonCoinStep> {
         if !self.had_input {
             self.had_input = true;
-            self.get_coin()
-        } else {
-            Ok(())
+            self.get_coin()?;
         }
+        self.step()
     }
 
     /// Receives input from a remote node.
-    fn handle_message(&mut self, sender_id: &Self::NodeUid, message: Self::Message) -> Result<()> {
-        if self.terminated {
-            return Ok(());
+    fn handle_message(
+        &mut self,
+        sender_id: &Self::NodeUid,
+        message: Self::Message,
+    ) -> Result<CommonCoinStep> {
+        if !self.terminated {
+            let CommonCoinMessage(share) = message;
+            self.handle_share(sender_id, share)?;
         }
-        let CommonCoinMessage(share) = message;
-        self.handle_share(sender_id, share)
+        self.step()
     }
 
     /// Takes the next share of a threshold signature message for multicasting to all other nodes.
@@ -112,11 +118,6 @@ where
         self.messages
             .pop_front()
             .map(|msg| Target::All.message(msg))
-    }
-
-    /// Consumes the output. Once consumed, the output stays `None` forever.
-    fn next_output(&mut self) -> Option<Self::Output> {
-        self.output.take()
     }
 
     /// Whether the algorithm has terminated.
@@ -144,6 +145,10 @@ where
             had_input: false,
             terminated: false,
         }
+    }
+
+    fn step(&mut self) -> Result<CommonCoinStep> {
+        Ok(Step::new(replace(&mut self.output, None)))
     }
 
     fn get_coin(&mut self) -> Result<()> {

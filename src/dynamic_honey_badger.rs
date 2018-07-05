@@ -49,7 +49,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::replace;
 use std::rc::Rc;
 
 use bincode;
@@ -57,8 +57,8 @@ use clear_on_drop::ClearOnDrop;
 use serde::{Deserialize, Serialize};
 
 use crypto::{PublicKey, PublicKeySet, SecretKey, Signature};
-use honey_badger::{self, Batch as HbBatch, HoneyBadger, Message as HbMessage};
-use messaging::{DistAlgorithm, NetworkInfo, Target, TargetedMessage};
+use honey_badger::{self, HoneyBadger, HoneyBadgerStep, Message as HbMessage};
+use messaging::{DistAlgorithm, NetworkInfo, Step, Target, TargetedMessage};
 use sync_key_gen::{Accept, Propose, SyncKeyGen};
 
 type KeyGenOutput = (PublicKeySet, Option<ClearOnDrop<Box<SecretKey>>>);
@@ -188,7 +188,7 @@ where
             key_gen: None,
             incoming_queue: Vec::new(),
             messages: MessageQueue(VecDeque::new()),
-            output: VecDeque::new(),
+            output: None,
         };
         Ok(dyn_hb)
     }
@@ -220,9 +220,11 @@ where
     incoming_queue: Vec<(NodeUid, Message<NodeUid>)>,
     /// The messages that need to be sent to other nodes.
     messages: MessageQueue<NodeUid>,
-    /// The outputs from completed epochs.
-    output: VecDeque<Batch<Tx, NodeUid>>,
+    /// The output from a completed epoch.
+    output: Option<Batch<Tx, NodeUid>>,
 }
+
+pub type DynamicHoneyBadgerStep<NodeUid, Tx> = Step<Batch<Tx, NodeUid>>;
 
 impl<Tx, NodeUid> DistAlgorithm for DynamicHoneyBadger<Tx, NodeUid>
 where
@@ -235,41 +237,44 @@ where
     type Message = Message<NodeUid>;
     type Error = Error;
 
-    fn input(&mut self, input: Self::Input) -> Result<()> {
+    fn input(&mut self, input: Self::Input) -> Result<DynamicHoneyBadgerStep<NodeUid, Tx>> {
         // User transactions are forwarded to `HoneyBadger` right away. Internal messages are
         // in addition signed and broadcast.
         match input {
             Input::User(tx) => {
-                self.honey_badger.input(Transaction::User(tx))?;
-                self.process_output()
+                let step = self.honey_badger.input(Transaction::User(tx))?;
+                self.process_output(step)?;
             }
-            Input::Change(change) => self.send_transaction(NodeTransaction::Change(change)),
+            Input::Change(change) => self.send_transaction(NodeTransaction::Change(change))?,
         }
+        self.step()
     }
 
-    fn handle_message(&mut self, sender_id: &NodeUid, message: Self::Message) -> Result<()> {
+    fn handle_message(
+        &mut self,
+        sender_id: &NodeUid,
+        message: Self::Message,
+    ) -> Result<DynamicHoneyBadgerStep<NodeUid, Tx>> {
         let epoch = message.epoch();
-        if epoch < self.start_epoch {
-            return Ok(()); // Obsolete message.
-        }
         if epoch > self.start_epoch {
             // Message cannot be handled yet. Save it for later.
             let entry = (sender_id.clone(), message);
             self.incoming_queue.push(entry);
-            return Ok(());
+        } else if epoch == self.start_epoch {
+            match message {
+                Message::HoneyBadger(_, hb_msg) => {
+                    self.handle_honey_badger_message(sender_id, hb_msg)?
+                }
+                Message::Signed(_, node_tx, sig) => {
+                    self.handle_signed_message(sender_id, node_tx, sig)?
+                }
+            }
         }
-        match message {
-            Message::HoneyBadger(_, hb_msg) => self.handle_honey_badger_message(sender_id, hb_msg),
-            Message::Signed(_, node_tx, sig) => self.handle_signed_message(sender_id, node_tx, sig),
-        }
+        self.step()
     }
 
     fn next_message(&mut self) -> Option<TargetedMessage<Self::Message, NodeUid>> {
         self.messages.pop_front()
-    }
-
-    fn next_output(&mut self) -> Option<Self::Output> {
-        self.output.pop_front()
     }
 
     fn terminated(&self) -> bool {
@@ -292,6 +297,10 @@ where
         DynamicHoneyBadgerBuilder::new(netinfo)
     }
 
+    fn step(&mut self) -> Result<DynamicHoneyBadgerStep<NodeUid, Tx>> {
+        Ok(Step::new(replace(&mut self.output, Default::default())))
+    }
+
     /// Handles a message for the `HoneyBadger` instance.
     fn handle_honey_badger_message(
         &mut self,
@@ -303,8 +312,8 @@ where
             return Err(ErrorKind::UnknownSender.into());
         }
         // Handle the message and put the outgoing messages into the queue.
-        self.honey_badger.handle_message(sender_id, message)?;
-        self.process_output()
+        let step = self.honey_badger.handle_message(sender_id, message)?;
+        self.process_output(step)
     }
 
     /// Handles a vote or key generation message and tries to commit it as a transaction. These
@@ -317,14 +326,14 @@ where
     ) -> Result<()> {
         self.verify_signature(sender_id, &*sig, &node_tx)?;
         let tx = Transaction::Signed(self.start_epoch, sender_id.clone(), node_tx, sig);
-        self.honey_badger.input(tx)?;
-        self.process_output()
+        let step = self.honey_badger.input(tx)?;
+        self.process_output(step)
     }
 
     /// Processes all pending batches output by Honey Badger.
-    fn process_output(&mut self) -> Result<()> {
+    fn process_output(&mut self, step: HoneyBadgerStep<NodeUid, Transaction<Tx, NodeUid>>) -> Result<()> {
         let start_epoch = self.start_epoch;
-        while let Some(hb_batch) = self.honey_badger.next_output() {
+        if let Some(hb_batch) = step.output {
             // Create the batch we output ourselves. It will contain the _user_ transactions of
             // `hb_batch`, and the current change state.
             let mut batch = Batch::new(hb_batch.epoch + self.start_epoch);
@@ -371,13 +380,13 @@ where
                     batch.change = ChangeState::InProgress(change.clone());
                 }
             }
-            self.output.push_back(batch);
+            self.output = Some(batch);
         }
         self.messages
             .extend_with_epoch(self.start_epoch, &mut self.honey_badger);
         // If `start_epoch` changed, we can now handle some queued messages.
         if start_epoch < self.start_epoch {
-            let queue = mem::replace(&mut self.incoming_queue, Vec::new());
+            let queue = replace(&mut self.incoming_queue, Vec::new());
             for (sender_id, msg) in queue {
                 self.handle_message(&sender_id, msg)?;
             }
@@ -456,9 +465,8 @@ where
         self.start_epoch = epoch;
         let honey_badger = {
             let netinfo = Rc::new(self.netinfo.clone());
-            let old_buf = self.honey_badger.drain_buffer();
-            let outputs = (self.honey_badger.output_iter()).flat_map(HbBatch::into_tx_iter);
-            let buffer = outputs.chain(old_buf).filter(Transaction::is_user);
+            let old_buf  = self.honey_badger.drain_buffer();
+            let buffer = old_buf.into_iter().filter(Transaction::is_user);
             HoneyBadger::builder(netinfo)
                 .batch_size(self.batch_size)
                 .max_future_epochs(self.max_future_epochs)
@@ -497,8 +505,8 @@ where
         }
         let our_uid = self.netinfo.our_uid().clone();
         let hb_tx = Transaction::Signed(self.start_epoch, our_uid, node_tx, sig);
-        self.honey_badger.input(hb_tx)?;
-        self.process_output()
+        let step = self.honey_badger.input(hb_tx)?;
+        self.process_output(step)
     }
 
     /// If the current Key Generation process is ready, returns the generated key set.

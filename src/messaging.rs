@@ -50,6 +50,29 @@ impl<M, N> TargetedMessage<M, N> {
     }
 }
 
+/// Result of one step of the local state machine of a distributed algorithm. Such a result should
+/// be used and never discarded by the client of the algorithm.
+pub struct Step<O> {
+    pub output: Option<O>,
+}
+
+impl<O> Default for Step<O>
+{
+    fn default() -> Step<O> {
+        Step {
+            output: None,
+        }
+    }
+}
+
+impl<O> Step<O> {
+    pub fn new(output: Option<O>) -> Self {
+        Step {
+            output,
+        }
+    }
+}
+
 /// A distributed algorithm that defines a message flow.
 pub trait DistAlgorithm {
     /// Unique node identifier.
@@ -65,20 +88,19 @@ pub trait DistAlgorithm {
     type Error: Debug;
 
     /// Handles an input provided by the user, and returns
-    fn input(&mut self, input: Self::Input) -> Result<(), Self::Error>;
+    #[must_use]
+    fn input(&mut self, input: Self::Input) -> Result<Step<Self::Output>, Self::Error>;
 
     /// Handles a message received from node `sender_id`.
+    #[must_use]
     fn handle_message(
         &mut self,
         sender_id: &Self::NodeUid,
         message: Self::Message,
-    ) -> Result<(), Self::Error>;
+    ) -> Result<Step<Self::Output>, Self::Error>;
 
     /// Returns a message that needs to be sent to another node.
     fn next_message(&mut self) -> Option<TargetedMessage<Self::Message, Self::NodeUid>>;
-
-    /// Returns the algorithm's output.
-    fn next_output(&mut self) -> Option<Self::Output>;
 
     /// Returns `true` if execution has completed and this instance can be dropped.
     fn terminated(&self) -> bool;
@@ -93,14 +115,6 @@ pub trait DistAlgorithm {
     {
         MessageIter { algorithm: self }
     }
-
-    /// Returns an iterator over the algorithm's outputs.
-    fn output_iter(&mut self) -> OutputIter<Self>
-    where
-        Self: Sized,
-    {
-        OutputIter { algorithm: self }
-    }
 }
 
 /// An iterator over a distributed algorithm's outgoing messages.
@@ -113,19 +127,6 @@ impl<'a, D: DistAlgorithm + 'a> Iterator for MessageIter<'a, D> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.algorithm.next_message()
-    }
-}
-
-/// An iterator over a distributed algorithm's pending outputs.
-pub struct OutputIter<'a, D: DistAlgorithm + 'a> {
-    algorithm: &'a mut D,
-}
-
-impl<'a, D: DistAlgorithm + 'a> Iterator for OutputIter<'a, D> {
-    type Item = D::Output;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.algorithm.next_output()
     }
 }
 

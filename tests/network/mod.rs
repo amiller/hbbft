@@ -38,18 +38,17 @@ impl<D: DistAlgorithm> TestNode<D> {
 
     /// Inputs a value into the instance.
     pub fn input(&mut self, input: D::Input) {
-        self.algo.input(input).expect("input");
-        self.outputs.extend(self.algo.output_iter());
+        let step = self.algo.input(input).expect("input");
+        self.outputs.extend(step.output);
     }
 
     /// Creates a new test node with the given broadcast instance.
-    fn new(mut algo: D) -> TestNode<D> {
-        let outputs = algo.output_iter().collect();
+    fn new(algo: D) -> TestNode<D> {
         TestNode {
             id: algo.our_id().clone(),
             algo,
             queue: VecDeque::new(),
-            outputs,
+            outputs: Vec::new(),
         }
     }
 
@@ -57,10 +56,10 @@ impl<D: DistAlgorithm> TestNode<D> {
     fn handle_message(&mut self) {
         let (from_id, msg) = self.queue.pop_front().expect("message not found");
         debug!("Handling {:?} -> {:?}: {:?}", from_id, self.id, msg);
-        self.algo
+        let step = self.algo
             .handle_message(&from_id, msg)
             .expect("handling message");
-        self.outputs.extend(self.algo.output_iter());
+        self.outputs.extend(step.output);
     }
 }
 
