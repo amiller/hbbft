@@ -249,6 +249,7 @@ impl<D: DistAlgorithm> Adversary<D> for RandomAdversary<D> {
             Target::Node(our_node_id) => {
                 // choose a new target to send the message to
                 // unwrap never fails, because we ensured that `known_node_ids` is non-empty earlier
+                let mut rng = rand::thread_rng();
                 let new_target_node = rng.choose(&self.known_node_ids).unwrap().clone();
 
                 // TODO: we could randomly broadcast it instead, if we had access to topology
