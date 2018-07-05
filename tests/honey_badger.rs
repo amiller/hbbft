@@ -54,7 +54,7 @@ impl FaultyShareAdversary {
 
 impl Adversary<HoneyBadger<usize, NodeUid>> for FaultyShareAdversary {
     fn pick_node(
-        &self,
+        &mut self,
         nodes: &BTreeMap<NodeUid, TestNode<HoneyBadger<usize, NodeUid>>>,
     ) -> NodeUid {
         self.scheduler.pick_node(nodes)

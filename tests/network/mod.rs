@@ -117,7 +117,7 @@ pub trait Adversary<D: DistAlgorithm> {
     ///
     /// Starvation is illegal, i.e. in every iteration a node that has pending incoming messages
     /// must be chosen.
-    fn pick_node(&self, nodes: &BTreeMap<D::NodeUid, TestNode<D>>) -> D::NodeUid;
+    fn pick_node(&mut self, nodes: &BTreeMap<D::NodeUid, TestNode<D>>) -> D::NodeUid;
 
     /// Called when a node controlled by the adversary receives a message
     fn push_message(&mut self, sender_id: D::NodeUid, msg: TargetedMessage<D::Message, D::NodeUid>);
@@ -139,7 +139,7 @@ impl SilentAdversary {
 }
 
 impl<D: DistAlgorithm> Adversary<D> for SilentAdversary {
-    fn pick_node(&self, nodes: &BTreeMap<D::NodeUid, TestNode<D>>) -> D::NodeUid {
+    fn pick_node(&mut self, nodes: &BTreeMap<D::NodeUid, TestNode<D>>) -> D::NodeUid {
         self.scheduler.pick_node(nodes)
     }
 
