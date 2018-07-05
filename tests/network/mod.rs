@@ -189,16 +189,18 @@ pub struct RandomAdversary<D: DistAlgorithm> {
     scheduler: MessageScheduler,
     known_node_ids: Vec<D::NodeUid>,
     outgoing: Vec<MessageWithSender<D>>,
+    p_replay: f32,
 }
 
 impl<D: DistAlgorithm> RandomAdversary<D> {
     /// Creates a new random adversary instance
-    fn new() -> RandomAdversary<D> {
+    fn new(p_replay: f32) -> RandomAdversary<D> {
         RandomAdversary {
             // the random adversary, true to its name, always schedules randomnly
             scheduler: MessageScheduler::Random,
             known_node_ids: Vec::new(),
             outgoing: Vec::new(),
+            p_replay: p_replay,
         }
     }
 }
@@ -221,9 +223,8 @@ impl<D: DistAlgorithm> Adversary<D> for RandomAdversary<D> {
             return;
         }
 
-        // only replay a message in 20% of the cases
-        let mut rng = rand::thread_rng();
-        if !rng.gen_weighted_bool(5) {
+        // only replay a message in some cases
+        if !randomly(self.p_replay) {
             return;
         }
 
