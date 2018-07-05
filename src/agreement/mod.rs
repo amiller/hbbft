@@ -135,6 +135,13 @@ enum CoinSchedule {
     Random,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum State {
+    NotInitialized,
+    Initialized,
+    Terminated,
+}
+
 /// Binary Agreement instance
 pub struct Agreement<NodeUid> {
     /// Shared network information.
@@ -172,12 +179,8 @@ pub struct Agreement<NodeUid> {
     /// A cache for messages for future epochs that cannot be handled yet.
     // TODO: Find a better solution for this; defend against spam.
     incoming_queue: Vec<(NodeUid, AgreementMessage)>,
-    /// Termination flag. The Agreement instance doesn't terminate immediately
-    /// upon deciding on the agreed value. This is done in order to help other
-    /// nodes decide despite asynchrony of communication. Once the instance
-    /// determines that all the remote nodes have reached agreement, it sets the
-    /// `terminated` flag and accepts no more incoming messages.
-    terminated: bool,
+    /// The state of the simplified state machine of the agreement algorithm.
+    state: State,
     /// The outgoing message queue.
     messages: VecDeque<AgreementMessage>,
     /// Whether the `Conf` message round has started in the current epoch.
@@ -205,7 +208,7 @@ impl<NodeUid: Clone + Debug + Ord> DistAlgorithm for Agreement<NodeUid> {
         sender_id: &Self::NodeUid,
         message: Self::Message,
     ) -> AgreementResult<()> {
-        if self.terminated || message.epoch < self.epoch {
+        if self.terminated() || message.epoch < self.epoch {
             return Ok(()); // Message is obsolete: We are already in a later epoch or terminated.
         }
         if message.epoch > self.epoch {
@@ -236,7 +239,7 @@ impl<NodeUid: Clone + Debug + Ord> DistAlgorithm for Agreement<NodeUid> {
 
     /// Whether the algorithm has terminated.
     fn terminated(&self) -> bool {
-        self.terminated
+        self.state == State::Terminated
     }
 
     fn our_id(&self) -> &Self::NodeUid {
@@ -267,7 +270,7 @@ impl<NodeUid: Clone + Debug + Ord> Agreement<NodeUid> {
                 output: None,
                 decision: None,
                 incoming_queue: Vec::new(),
-                terminated: false,
+                state: State::NotInitialized,
                 messages: VecDeque::new(),
                 conf_round: false,
                 common_coin: CommonCoin::new(
@@ -283,18 +286,19 @@ impl<NodeUid: Clone + Debug + Ord> Agreement<NodeUid> {
 
     /// Sets the input value for agreement.
     pub fn set_input(&mut self, input: bool) -> AgreementResult<()> {
-        if self.epoch != 0 || self.estimated.is_some() {
+        if self.state != State::NotInitialized {
             return Err(ErrorKind::InputNotAccepted.into());
         }
         if self.netinfo.num_nodes() == 1 {
             self.decision = Some(input);
             self.output = Some(input);
-            self.terminated = true;
+            self.state = State::Terminated;
             self.send_bval(input)?;
             self.send_aux(input)
         } else {
             // Set the initial estimated value to the input value.
             self.estimated = Some(input);
+            self.state = State::Initialized;
             // Record the input value as sent.
             self.send_bval(input)
         }
@@ -302,7 +306,7 @@ impl<NodeUid: Clone + Debug + Ord> Agreement<NodeUid> {
 
     /// Acceptance check to be performed before setting the input value.
     pub fn accepts_input(&self) -> bool {
-        self.epoch == 0 && self.estimated.is_none()
+        self.state == State::NotInitialized
     }
 
     fn handle_bval(&mut self, sender_id: &NodeUid, b: bool) -> AgreementResult<()> {
@@ -486,6 +490,9 @@ impl<NodeUid: Clone + Debug + Ord> Agreement<NodeUid> {
         self.update_epoch();
 
         self.estimated = Some(b);
+        if self.state == State::NotInitialized {
+            self.state = State::Initialized;
+        }
         self.send_bval(b)?;
         let queued_msgs = replace(&mut self.incoming_queue, Vec::new());
         for (sender_id, msg) in queued_msgs {
@@ -524,7 +531,7 @@ impl<NodeUid: Clone + Debug + Ord> Agreement<NodeUid> {
                 .push_back(AgreementContent::Term(b).with_epoch(self.epoch));
             self.received_term.insert(self.netinfo.our_uid().clone(), b);
         }
-        self.terminated = true;
+        self.state = State::Terminated;
         debug!(
             "Agreement instance {:?} decided: {}",
             self.netinfo.our_uid(),
