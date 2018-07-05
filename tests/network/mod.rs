@@ -191,34 +191,52 @@ fn test_randomly() {
 ///
 /// The adversary will randomly take a message that is sent to one of its nodes and re-send it to
 /// a different node
-pub struct RandomAdversary<D: DistAlgorithm> {
+pub struct RandomAdversary<D: DistAlgorithm, F> {
     /// The underlying scheduler used
     scheduler: MessageScheduler,
 
-    /// Collects node ids seen by the adversary.
+    /// Node ids seen by the adversary.
     known_node_ids: Vec<D::NodeUid>,
+
+    /// Node ids under control of adversary
+    known_adversarial_ids: Vec<D::NodeUid>,
 
     /// Internal queue for messages to be returned on the next `Adversary::step()` call
     outgoing: Vec<MessageWithSender<D>>,
 
+    /// Generates random messages to be injected
+    generator: F,
+
     /// Probability of a message replay
     p_replay: f32,
+
+    /// Probability of a message injection
+    p_inject: f32,
 }
 
-impl<D: DistAlgorithm> RandomAdversary<D> {
+impl<D: DistAlgorithm, F> RandomAdversary<D, F> {
     /// Creates a new random adversary instance
-    fn new(p_replay: f32) -> RandomAdversary<D> {
+    fn new(p_replay: f32, p_inject: f32, generator: F) -> RandomAdversary<D, F> {
+        assert!(p_inject < 0.95, "injections are repeated, p_inject must be smaller than 0.95");
+
         RandomAdversary {
             // the random adversary, true to its name, always schedules randomnly
             scheduler: MessageScheduler::Random,
             known_node_ids: Vec::new(),
+            known_adversarial_ids: Vec::new(),
             outgoing: Vec::new(),
-            p_replay: p_replay,
+            generator,
+            p_replay,
+            p_inject,
         }
     }
 }
 
-impl<D: DistAlgorithm> Adversary<D> for RandomAdversary<D> {
+impl<D: DistAlgorithm, F: Fn() -> TargetedMessage<D::Message, D::NodeUid>> Adversary<D> for RandomAdversary<D, F> {
+    fn init(&mut self, nodes: &BTreeMap<D::NodeUid, Rc<NetworkInfo<D::NodeUid>>>) {
+        self.known_adversarial_ids = nodes.keys().cloned().collect();
+    }
+
     fn pick_node(&mut self, nodes: &BTreeMap<D::NodeUid, TestNode<D>>) -> D::NodeUid {
         // we are a bit hamstrung by the current API in that we would usually like a set of node
         // ids available in `push_message`. the workaround is to "steal" them here for use later
@@ -272,9 +290,22 @@ impl<D: DistAlgorithm> Adversary<D> for RandomAdversary<D> {
     }
 
     fn step(&mut self) -> Vec<MessageWithSender<D>> {
-        // clear and send all messages
+        // clear messages
         let mut tmp = Vec::new();
         mem::swap(&mut tmp, &mut self.outgoing);
+
+        // possibly inject more messages
+        while randomly(self.p_inject) {
+            let mut rng = rand::thread_rng();
+
+            // pick a random adversarial node and create a message using the generator
+            let sender = rng.choose(&self.known_adversarial_ids[..]).expect("no adversarial nodes defined");
+            let tm = (self.generator)();
+
+            // add to outgoing queue
+            tmp.push(MessageWithSender::new(sender.clone(), tm));
+        }
+
         tmp
     }
 }
