@@ -104,10 +104,23 @@ impl MessageScheduler {
     }
 }
 
-pub type MessageWithSender<D> = (
-    <D as DistAlgorithm>::NodeUid,
-    TargetedMessage<<D as DistAlgorithm>::Message, <D as DistAlgorithm>::NodeUid>,
-);
+/// A message combined with a sender
+pub struct MessageWithSender<D: DistAlgorithm> {
+    /// The sender of the message
+    pub sender: <D as DistAlgorithm>::NodeUid,
+    /// The targeted message (recipient and message body)
+    pub tm: TargetedMessage<<D as DistAlgorithm>::Message, <D as DistAlgorithm>::NodeUid>,
+}
+
+impl<D: DistAlgorithm> MessageWithSender<D> {
+    /// Creates a new message with a sender
+    pub fn new(
+        sender: D::NodeUid,
+        tm: TargetedMessage<D::Message, D::NodeUid>,
+    ) -> MessageWithSender<D> {
+        MessageWithSender { sender, tm }
+    }
+}
 
 /// An adversary that can control a set of nodes and pick the next good node to receive a message.
 ///
@@ -232,8 +245,8 @@ where
             adv_nodes,
         };
         let msgs = network.adversary.step();
-        for (sender_id, msg) in msgs {
-            network.dispatch_messages(sender_id, vec![msg]);
+        for MessageWithSender { sender, tm } in msgs {
+            network.dispatch_messages(sender, vec![tm]);
         }
         let mut initial_msgs: Vec<(D::NodeUid, Vec<_>)> = Vec::new();
         for (id, node) in &mut network.nodes {
@@ -292,8 +305,8 @@ where
     pub fn step(&mut self) -> NodeUid {
         // we let the adversary send out messages to any number of nodes
         let msgs = self.adversary.step();
-        for (sender_id, msg) in msgs {
-            self.dispatch_messages(sender_id, Some(msg));
+        for MessageWithSender { sender, tm } in msgs {
+            self.dispatch_messages(sender, Some(tm));
         }
 
         // now one node is chosen to make progress. we let the adversary decide which node

@@ -20,7 +20,9 @@ use rand::Rng;
 use hbbft::broadcast::{Broadcast, BroadcastMessage};
 use hbbft::crypto::SecretKeySet;
 use hbbft::messaging::{DistAlgorithm, NetworkInfo, TargetedMessage};
-use network::{Adversary, MessageScheduler, NodeUid, SilentAdversary, TestNetwork, TestNode};
+use network::{
+    Adversary, MessageScheduler, MessageWithSender, NodeUid, SilentAdversary, TestNetwork, TestNode,
+};
 
 /// An adversary that inputs an alternate value.
 struct ProposeAdversary {
@@ -55,7 +57,7 @@ impl Adversary<Broadcast<NodeUid>> for ProposeAdversary {
         // All messages are ignored.
     }
 
-    fn step(&mut self) -> Vec<(NodeUid, TargetedMessage<BroadcastMessage, NodeUid>)> {
+    fn step(&mut self) -> Vec<MessageWithSender<Broadcast<NodeUid>>> {
         if self.has_sent {
             return vec![];
         }
@@ -84,7 +86,9 @@ impl Adversary<Broadcast<NodeUid>> for ProposeAdversary {
         ));
         let mut bc = Broadcast::new(netinfo, id).expect("broadcast instance");
         bc.input(b"Fake news".to_vec()).expect("propose");
-        bc.message_iter().map(|msg| (id, msg)).collect()
+        bc.message_iter()
+            .map(|msg| MessageWithSender::new(id, msg))
+            .collect()
     }
 }
 

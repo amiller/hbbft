@@ -100,7 +100,7 @@ impl Adversary<HoneyBadger<usize, NodeUid>> for FaultyShareAdversary {
                         .expect("decryption share");
                     // Send the share to remote nodes.
                     for proposer_id in 0..self.num_good + self.num_adv {
-                        outgoing.push((
+                        outgoing.push(MessageWithSender::new(
                             NodeUid(sender_id),
                             Target::All.message(
                                 MessageContent::DecryptionShare {
