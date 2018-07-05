@@ -62,6 +62,11 @@ impl<D: DistAlgorithm> TestNode<D> {
             .expect("handling message");
         self.outputs.extend(self.algo.output_iter());
     }
+
+    /// Checks whether the node has messages to process
+    fn is_idle(&self) -> bool {
+        self.queue.is_empty()
+    }
 }
 
 /// A strategy for picking the next good node to handle a message.
@@ -294,12 +299,18 @@ where
         // now one node is chosen to make progress. we let the adversary decide which node
         let id = self.adversary.pick_node(&self.nodes);
 
-        // TODO: ensure the adversary is honest and does pick a node that has actual messages to
-        //       process
-
         // the node handles the incoming message and creates new outgoing ones to be dispatched
         let msgs: Vec<_> = {
             let node = self.nodes.get_mut(&id).unwrap();
+
+            // ensure the adversary is playing fair by selecting a node that will result in actual
+            // progress being made. otherwise `TestNode::handle_message()` will panic on `expect()`
+            // with a much more cryptic error message
+            assert!(
+                !node.is_idle(),
+                "adversary illegally selected an idle node in pick_node()"
+            );
+
             node.handle_message();
             node.algo.message_iter().collect()
         };
