@@ -138,6 +138,12 @@ pub trait Adversary<D: DistAlgorithm> {
 
     /// Produces a list of messages to be sent from the adversary's nodes
     fn step(&mut self) -> Vec<MessageWithSender<D>>;
+
+    /// Initialize an adversary. This function's primary purpose is to inform the adversary over
+    /// some aspects of the network, such as which nodes they control.
+    fn init(&mut self, adv_nodes: &BTreeMap<D::NodeUid, Rc<NetworkInfo<D::NodeUid>>>) {
+        // default: does nothing
+    }
 }
 
 /// An adversary whose nodes never send any messages.
@@ -345,6 +351,7 @@ where
             .map(NodeUid)
             .map(new_adv_node_by_id)
             .collect();
+
         let mut network = TestNetwork {
             nodes: (0..good_num).map(NodeUid).map(new_node_by_id).collect(),
             observer: new_node_by_id(NodeUid(good_num + adv_num)).1,
@@ -352,6 +359,10 @@ where
             pk_set: pk_set.clone(),
             adv_nodes,
         };
+
+        // inform the adversary over their nodes
+        network.adversary.init(&network.adv_nodes);
+
         let msgs = network.adversary.step();
         for MessageWithSender { sender, tm } in msgs {
             network.dispatch_messages(sender, vec![tm]);
