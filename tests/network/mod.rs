@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::mem;
 use std::rc::Rc;
 
 use rand::{self, Rng};
@@ -162,6 +163,89 @@ impl<D: DistAlgorithm> Adversary<D> for SilentAdversary {
 
     fn step(&mut self) -> Vec<MessageWithSender<D>> {
         vec![] // No messages are sent.
+    }
+}
+
+/// An adversary that performs naive replay attacks
+///
+/// The adversary will randomly take a message that is sent to one of its nodes and re-send it to
+/// a different node
+pub struct RandomAdversary<D: DistAlgorithm> {
+    scheduler: MessageScheduler,
+    known_node_ids: Vec<D::NodeUid>,
+    outgoing: Vec<MessageWithSender<D>>,
+}
+
+impl<D: DistAlgorithm> RandomAdversary<D> {
+    /// Creates a new random adversary instance
+    fn new() -> RandomAdversary<D> {
+        RandomAdversary {
+            // the random adversary, true to its name, always schedules randomnly
+            scheduler: MessageScheduler::Random,
+            known_node_ids: Vec::new(),
+            outgoing: Vec::new(),
+        }
+    }
+}
+
+impl<D: DistAlgorithm> Adversary<D> for RandomAdversary<D> {
+    fn pick_node(&mut self, nodes: &BTreeMap<D::NodeUid, TestNode<D>>) -> D::NodeUid {
+        // we are a bit hamstrung by the current API in that we would usually like a set of node
+        // ids available in `push_message`. the workaround is to "steal" them here for use later
+        if self.known_node_ids.len() == 0 {
+            self.known_node_ids = nodes.keys().cloned().collect();
+        }
+
+        // proceed by regularly picking a node
+        self.scheduler.pick_node(nodes)
+    }
+
+    fn push_message(&mut self, _: D::NodeUid, msg: TargetedMessage<D::Message, D::NodeUid>) {
+        // if we have not discovered the network topology yet, abort
+        if self.known_node_ids.len() == 0 {
+            return;
+        }
+
+        // only replay a message in 20% of the cases
+        let mut rng = rand::thread_rng();
+        if !rng.gen_weighted_bool(5) {
+            return;
+        }
+
+        let TargetedMessage { message, target } = msg;
+
+        match target {
+            Target::All => {
+                // ideally, we would want to handle broadcast messages as well; however the
+                // adversary API is quite cumbersome at the moment in regards to access to the
+                // network topology. to re-send a broadcast message from one of the attacker
+                // controlled nodes, we would have to get a list of attacker controlled nodes
+                // here and use a random one as the origin/sender
+                return;
+            }
+            Target::Node(our_node_id) => {
+                // choose a new target to send the message to
+                // unwrap never fails, because we ensured that `known_node_ids` is non-empty earlier
+                let new_target_node = rng.choose(&self.known_node_ids).unwrap().clone();
+
+                // TODO: we could randomly broadcast it instead, if we had access to topology
+                //       information
+                self.outgoing.push(MessageWithSender::new(
+                    our_node_id,
+                    TargetedMessage {
+                        target: Target::Node(new_target_node),
+                        message,
+                    },
+                ));
+            }
+        }
+    }
+
+    fn step(&mut self) -> Vec<MessageWithSender<D>> {
+        // clear and send all messages
+        let mut tmp = Vec::new();
+        mem::swap(&mut tmp, &mut self.outgoing);
+        tmp
     }
 }
 
