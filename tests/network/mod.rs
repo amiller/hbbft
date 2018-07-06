@@ -325,7 +325,9 @@ impl<D: DistAlgorithm, F: Fn() -> TargetedMessage<D::Message, D::NodeUid>> Adver
             }
         }
 
-        println!("Injecting random messages: {:?}", tmp);
+        if tmp.len() != 0 {
+            println!("Injecting random messages: {:?}", tmp);
+        }
         tmp
     }
 }
