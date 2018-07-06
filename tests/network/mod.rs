@@ -152,7 +152,7 @@ pub trait Adversary<D: DistAlgorithm> {
 
     /// Initialize an adversary. This function's primary purpose is to inform the adversary over
     /// some aspects of the network, such as which nodes they control.
-    fn init(&mut self, adv_nodes: &BTreeMap<D::NodeUid, Rc<NetworkInfo<D::NodeUid>>>) {
+    fn init(&mut self, _adv_nodes: &BTreeMap<D::NodeUid, Rc<NetworkInfo<D::NodeUid>>>) {
         // default: does nothing
     }
 }
@@ -202,6 +202,7 @@ fn test_randomly() {
 ///
 /// The adversary will randomly take a message that is sent to one of its nodes and re-send it to
 /// a different node
+#[allow(unused)] // not used in all tests
 pub struct RandomAdversary<D: DistAlgorithm, F> {
     /// The underlying scheduler used
     scheduler: MessageScheduler,
@@ -227,8 +228,12 @@ pub struct RandomAdversary<D: DistAlgorithm, F> {
 
 impl<D: DistAlgorithm, F> RandomAdversary<D, F> {
     /// Creates a new random adversary instance
-    fn new(p_replay: f32, p_inject: f32, generator: F) -> RandomAdversary<D, F> {
-        assert!(p_inject < 0.95, "injections are repeated, p_inject must be smaller than 0.95");
+    #[allow(unused)]
+    pub fn new(p_replay: f32, p_inject: f32, generator: F) -> RandomAdversary<D, F> {
+        assert!(
+            p_inject < 0.95,
+            "injections are repeated, p_inject must be smaller than 0.95"
+        );
 
         RandomAdversary {
             // the random adversary, true to its name, always schedules randomnly
@@ -243,7 +248,9 @@ impl<D: DistAlgorithm, F> RandomAdversary<D, F> {
     }
 }
 
-impl<D: DistAlgorithm, F: Fn() -> TargetedMessage<D::Message, D::NodeUid>> Adversary<D> for RandomAdversary<D, F> {
+impl<D: DistAlgorithm, F: Fn() -> TargetedMessage<D::Message, D::NodeUid>> Adversary<D>
+    for RandomAdversary<D, F>
+{
     fn init(&mut self, nodes: &BTreeMap<D::NodeUid, Rc<NetworkInfo<D::NodeUid>>>) {
         self.known_adversarial_ids = nodes.keys().cloned().collect();
     }
