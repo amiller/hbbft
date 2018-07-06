@@ -317,11 +317,12 @@ impl<D: DistAlgorithm, F: Fn() -> TargetedMessage<D::Message, D::NodeUid>> Adver
             let mut rng = rand::thread_rng();
 
             // pick a random adversarial node and create a message using the generator
-            let sender = rng.choose(&self.known_adversarial_ids[..]).expect("no adversarial nodes defined");
-            let tm = (self.generator)();
+            if let Some(sender) = rng.choose(&self.known_adversarial_ids[..]) {
+                let tm = (self.generator)();
 
-            // add to outgoing queue
-            tmp.push(MessageWithSender::new(sender.clone(), tm));
+                // add to outgoing queue
+                tmp.push(MessageWithSender::new(sender.clone(), tm));
+            }
         }
 
         println!("Injecting random messages: {:?}", tmp);
