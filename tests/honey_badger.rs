@@ -8,6 +8,8 @@ extern crate env_logger;
 extern crate pairing;
 extern crate rand;
 #[macro_use]
+extern crate rand_derive;
+#[macro_use]
 extern crate serde_derive;
 
 mod network;
@@ -22,7 +24,8 @@ use hbbft::honey_badger::{self, Batch, HoneyBadger, MessageContent};
 use hbbft::messaging::{NetworkInfo, Target, TargetedMessage};
 
 use network::{
-    Adversary, MessageScheduler, MessageWithSender, NodeUid, SilentAdversary, TestNetwork, TestNode,
+    Adversary, MessageScheduler, MessageWithSender, NodeUid, RandomAdversary, SilentAdversary,
+    TestNetwork, TestNode,
 };
 
 /// An adversary whose nodes only send messages with incorrect decryption shares.
@@ -228,6 +231,18 @@ fn test_honey_badger_first_delivery_silent() {
 fn test_honey_badger_faulty_share() {
     let new_adversary = |num_good: usize, num_adv: usize, adv_nodes| {
         FaultyShareAdversary::new(num_good, num_adv, adv_nodes, MessageScheduler::Random)
+    };
+    test_honey_badger_different_sizes(new_adversary, 8);
+}
+
+#[test]
+fn test_honey_badger_random_adversary() {
+    let new_adversary = |_, _, _| {
+        // ~ 13k extra messages added with a 10% injection chance
+        RandomAdversary::new(0.1, 0.1, || TargetedMessage {
+            target: Target::All,
+            message: rand::random(),
+        })
     };
     test_honey_badger_different_sizes(new_adversary, 8);
 }

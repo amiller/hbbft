@@ -10,7 +10,7 @@ use hbbft::crypto::{PublicKeySet, SecretKeySet};
 use hbbft::messaging::{DistAlgorithm, NetworkInfo, Target, TargetedMessage};
 
 /// A node identifier. In the tests, nodes are simply numbered.
-#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Clone, Copy, Serialize, Deserialize, Rand)]
 pub struct NodeUid(pub usize);
 
 /// A "node" running an instance of the algorithm `D`.
