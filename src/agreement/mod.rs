@@ -122,12 +122,15 @@ impl AgreementContent {
 }
 
 /// Messages sent during the binary Byzantine agreement stage.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Rand)]
 pub struct AgreementMessage {
     pub epoch: u32,
     pub content: AgreementContent,
 }
 
+// note: extending rand_derive to correct generate random values from boxes would make this
+// implementation obsolete; however at the time of this writing, `rand::Rand` is already deprecated
+// with no replacement in sight.
 impl rand::Rand for AgreementContent {
     fn rand<R: rand::Rng>(rng: &mut R) -> Self {
         let message_type = *rng
@@ -137,7 +140,7 @@ impl rand::Rand for AgreementContent {
         match message_type {
             "bval" => AgreementContent::BVal(rand::random()),
             "aux" => AgreementContent::Aux(rand::random()),
-            // "conf" => AgreementContent::Conf(rand::random()),
+            "conf" => AgreementContent::Conf(rand::random()),
             "term" => AgreementContent::Conf(rand::random()),
             "coin" => AgreementContent::Coin(Box::new(rand::random())),
             _ => unreachable!(),

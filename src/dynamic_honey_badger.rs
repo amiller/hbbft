@@ -45,6 +45,7 @@
 //! `SyncKeyGen` instance is dropped, and a new one is started to create keys according to the new
 //! pending change.
 
+use rand::Rand;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -135,7 +136,7 @@ pub struct DynamicHoneyBadgerBuilder<Tx, NodeUid> {
 impl<Tx, NodeUid> DynamicHoneyBadgerBuilder<Tx, NodeUid>
 where
     Tx: Eq + Serialize + for<'r> Deserialize<'r> + Debug + Hash,
-    NodeUid: Eq + Ord + Clone + Debug + Serialize + for<'r> Deserialize<'r> + Hash,
+    NodeUid: Eq + Ord + Clone + Debug + Serialize + for<'r> Deserialize<'r> + Hash + Rand,
 {
     /// Returns a new `DynamicHoneyBadgerBuilder` configured to use the node IDs and cryptographic
     /// keys specified by `netinfo`.
@@ -195,7 +196,7 @@ where
 }
 
 /// A Honey Badger instance that can handle adding and removing nodes.
-pub struct DynamicHoneyBadger<Tx, NodeUid>
+pub struct DynamicHoneyBadger<Tx, NodeUid: Rand>
 where
     Tx: Eq + Serialize + for<'r> Deserialize<'r> + Debug + Hash,
     NodeUid: Ord + Clone + Serialize + for<'r> Deserialize<'r> + Debug,
@@ -227,7 +228,7 @@ where
 impl<Tx, NodeUid> DistAlgorithm for DynamicHoneyBadger<Tx, NodeUid>
 where
     Tx: Eq + Serialize + for<'r> Deserialize<'r> + Debug + Hash,
-    NodeUid: Eq + Ord + Clone + Serialize + for<'r> Deserialize<'r> + Debug + Hash,
+    NodeUid: Eq + Ord + Clone + Serialize + for<'r> Deserialize<'r> + Debug + Hash + Rand,
 {
     type NodeUid = NodeUid;
     type Input = Input<Tx, NodeUid>;
@@ -284,7 +285,7 @@ where
 impl<Tx, NodeUid> DynamicHoneyBadger<Tx, NodeUid>
 where
     Tx: Eq + Serialize + for<'r> Deserialize<'r> + Debug + Hash,
-    NodeUid: Eq + Ord + Clone + Debug + Serialize + for<'r> Deserialize<'r> + Hash,
+    NodeUid: Eq + Ord + Clone + Debug + Serialize + for<'r> Deserialize<'r> + Hash + Rand,
 {
     /// Returns a new `DynamicHoneyBadgerBuilder` configured to use the node IDs and cryptographic
     /// keys specified by `netinfo`.
@@ -606,7 +607,7 @@ pub struct Batch<Tx, NodeUid> {
     pub change: ChangeState<NodeUid>,
 }
 
-impl<Tx, NodeUid: Ord> Batch<Tx, NodeUid> {
+impl<Tx, NodeUid: Ord + Rand> Batch<Tx, NodeUid> {
     /// Returns a new, empty batch with the given epoch.
     pub fn new(epoch: u64) -> Self {
         Batch {
@@ -654,14 +655,14 @@ pub enum NodeTransaction<NodeUid> {
 /// A message sent to or received from another node's Honey Badger instance.
 #[cfg_attr(feature = "serialization-serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone)]
-pub enum Message<NodeUid> {
+pub enum Message<NodeUid: Rand> {
     /// A message belonging to the `HoneyBadger` algorithm started in the given epoch.
     HoneyBadger(u64, HbMessage<NodeUid>),
     /// A transaction to be committed, signed by a node.
     Signed(u64, NodeTransaction<NodeUid>, Box<Signature>),
 }
 
-impl<NodeUid> Message<NodeUid> {
+impl<NodeUid: Rand> Message<NodeUid> {
     pub fn epoch(&self) -> u64 {
         match *self {
             Message::HoneyBadger(epoch, _) => epoch,
@@ -672,11 +673,11 @@ impl<NodeUid> Message<NodeUid> {
 
 /// The queue of outgoing messages in a `HoneyBadger` instance.
 #[derive(Deref, DerefMut)]
-struct MessageQueue<NodeUid>(VecDeque<TargetedMessage<Message<NodeUid>, NodeUid>>);
+struct MessageQueue<NodeUid: Rand>(VecDeque<TargetedMessage<Message<NodeUid>, NodeUid>>);
 
 impl<NodeUid> MessageQueue<NodeUid>
 where
-    NodeUid: Eq + Hash + Ord + Clone + Debug + Serialize + for<'r> Deserialize<'r>,
+    NodeUid: Eq + Hash + Ord + Clone + Debug + Serialize + for<'r> Deserialize<'r> + Rand,
 {
     /// Appends to the queue the messages from `hb`, wrapped with `epoch`.
     fn extend_with_epoch<Tx>(&mut self, epoch: u64, hb: &mut HoneyBadger<Tx, NodeUid>)
