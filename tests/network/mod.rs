@@ -258,7 +258,7 @@ impl<D: DistAlgorithm, F: Fn() -> TargetedMessage<D::Message, D::NodeUid>> Adver
     fn pick_node(&mut self, nodes: &BTreeMap<D::NodeUid, TestNode<D>>) -> D::NodeUid {
         // we are a bit hamstrung by the current API in that we would usually like a set of node
         // ids available in `push_message`. the workaround is to "steal" them here for use later
-        if self.known_node_ids.len() == 0 {
+        if self.known_node_ids.is_empty() {
             self.known_node_ids = nodes.keys().cloned().collect();
         }
 
@@ -268,7 +268,7 @@ impl<D: DistAlgorithm, F: Fn() -> TargetedMessage<D::Message, D::NodeUid>> Adver
 
     fn push_message(&mut self, _: D::NodeUid, msg: TargetedMessage<D::Message, D::NodeUid>) {
         // if we have not discovered the network topology yet, abort
-        if self.known_node_ids.len() == 0 {
+        if self.known_node_ids.is_empty() {
             return;
         }
 
@@ -325,7 +325,7 @@ impl<D: DistAlgorithm, F: Fn() -> TargetedMessage<D::Message, D::NodeUid>> Adver
             }
         }
 
-        if tmp.len() != 0 {
+        if tmp.is_empty() {
             println!("Injecting random messages: {:?}", tmp);
         }
         tmp
