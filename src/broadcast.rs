@@ -144,6 +144,7 @@ use std::rc::Rc;
 
 use byteorder::{BigEndian, ByteOrder};
 use merkle::{MerkleTree, Proof};
+use rand;
 use reed_solomon_erasure as rse;
 use reed_solomon_erasure::ReedSolomon;
 use ring::digest;
@@ -177,6 +178,29 @@ pub enum BroadcastMessage {
     Value(Proof<Vec<u8>>),
     Echo(Proof<Vec<u8>>),
     Ready(Vec<u8>),
+}
+
+// a random generation impl is provided for test cases. unfortunately #[cfg(test)] does not work for
+// integration tests
+impl rand::Rand for BroadcastMessage {
+    fn rand<R: rand::Rng>(rng: &mut R) -> Self {
+        let message_type = *rng.choose(&["value", "echo", "ready"]).unwrap();
+
+        // we create a random buffer for our proof
+        let mut buffer: [u8; 32] = [0; 32];
+        rng.fill_bytes(&mut buffer);
+
+        // generate a dummy proof to fill broadcast messages with
+        let tree = MerkleTree::from_vec(&digest::SHA256, vec![buffer.to_vec()]);
+        let proof = tree.gen_proof(buffer.to_vec()).unwrap();
+
+        match message_type {
+            "value" => BroadcastMessage::Value(proof),
+            "echo" => BroadcastMessage::Echo(proof),
+            "ready" => BroadcastMessage::Ready(b"dummy-ready".to_vec()),
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl Debug for BroadcastMessage {

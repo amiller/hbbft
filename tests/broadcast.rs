@@ -19,9 +19,10 @@ use rand::Rng;
 
 use hbbft::broadcast::{Broadcast, BroadcastMessage};
 use hbbft::crypto::SecretKeySet;
-use hbbft::messaging::{DistAlgorithm, NetworkInfo, TargetedMessage};
+use hbbft::messaging::{DistAlgorithm, NetworkInfo, Target, TargetedMessage};
 use network::{
-    Adversary, MessageScheduler, MessageWithSender, NodeUid, SilentAdversary, TestNetwork, TestNode,
+    Adversary, MessageScheduler, MessageWithSender, NodeUid, RandomAdversary, SilentAdversary,
+    TestNetwork, TestNode,
 };
 
 /// An adversary that inputs an alternate value.
@@ -185,4 +186,16 @@ fn test_broadcast_first_delivery_adv_propose() {
         ProposeAdversary::new(MessageScheduler::First, good_nodes, adv_nodes)
     };
     test_broadcast_different_sizes(new_adversary, b"Foo");
+}
+
+#[test]
+fn test_broadcast_random_adversary() {
+    let new_adversary = |_, _| {
+        // note: set this to 0.8 instead and watch 30 gigs of ram disappear
+        RandomAdversary::new(0.2, 0.2, || TargetedMessage {
+            target: Target::All,
+            message: rand::random(),
+        })
+    };
+    test_broadcast_different_sizes(new_adversary, b"RandomFoo");
 }
