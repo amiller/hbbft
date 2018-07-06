@@ -65,6 +65,7 @@
 
 pub mod bin_values;
 
+use rand;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt::Debug;
 use std::mem::replace;
@@ -125,6 +126,23 @@ impl AgreementContent {
 pub struct AgreementMessage {
     pub epoch: u32,
     pub content: AgreementContent,
+}
+
+impl rand::Rand for AgreementContent {
+    fn rand<R: rand::Rng>(rng: &mut R) -> Self {
+        let message_type = *rng
+            .choose(&["bval", "aux", "conf", "term", "coin"])
+            .unwrap();
+
+        match message_type {
+            "bval" => AgreementContent::BVal(rand::random()),
+            "aux" => AgreementContent::Aux(rand::random()),
+            // "conf" => AgreementContent::Conf(rand::random()),
+            "term" => AgreementContent::Conf(rand::random()),
+            "coin" => AgreementContent::Coin(Box::new(rand::random())),
+            _ => unreachable!(),
+        }
+    }
 }
 
 /// Possible values of the common coin schedule defining the method to derive the common coin in a

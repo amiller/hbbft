@@ -21,12 +21,13 @@
 //! * When a node has received _2 f + 1_ shares, it computes the main signature and outputs the XOR
 //! of its bits.
 
+use rand;
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Debug;
 use std::rc::Rc;
 
 use crypto::error as cerror;
-use crypto::Signature;
+use crypto::{SecretKey, Signature};
 use messaging::{DistAlgorithm, NetworkInfo, Target, TargetedMessage};
 
 error_chain! {
@@ -54,6 +55,21 @@ impl CommonCoinMessage {
 
     pub fn to_sig(&self) -> &Signature {
         &self.0
+    }
+}
+
+// random message generation used for testing
+impl rand::Rand for CommonCoinMessage {
+    fn rand<R: rand::Rng>(rng: &mut R) -> Self {
+        // generate a new random secret key
+        let secret_key: SecretKey = rand::random();
+
+        let mut nonce: [u8; 32] = [0; 32];
+        rng.fill_bytes(&mut nonce);
+
+        let sig = secret_key.sign(&nonce);
+
+        CommonCoinMessage(sig)
     }
 }
 
