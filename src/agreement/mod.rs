@@ -500,7 +500,19 @@ impl<NodeUid: Clone + Debug + Ord> Agreement<NodeUid> {
         self.send_bval(b)?;
         let queued_msgs = replace(&mut self.incoming_queue, Vec::new());
         for (sender_id, msg) in queued_msgs {
-            self.handle_message(&sender_id, msg)?;
+            debug!(
+                "{:?} handling queued message {:?} from {:?}",
+                self.our_id(),
+                msg,
+                sender_id
+            );
+            let step = self.handle_message(&sender_id, msg)?;
+            if let Some(output) = step.output {
+                self.output = Some(output);
+            }
+            if self.terminated() {
+                break;
+            }
         }
         Ok(())
     }
