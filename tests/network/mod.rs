@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::fmt::Debug;
+use std::fmt::{self, Debug};
 use std::hash::Hash;
 use std::mem;
 use std::rc::Rc;
@@ -111,6 +111,17 @@ pub struct MessageWithSender<D: DistAlgorithm> {
     pub sender: <D as DistAlgorithm>::NodeUid,
     /// The targeted message (recipient and message body)
     pub tm: TargetedMessage<<D as DistAlgorithm>::Message, <D as DistAlgorithm>::NodeUid>,
+}
+
+// the Debug implementation cannot be derived automatically, possibly due to a compiler bug
+impl<D: DistAlgorithm> fmt::Debug for MessageWithSender<D> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "<MessageWithSender[from={:?} to={:?}]{:?}>",
+            self.sender, self.tm.target, self.tm.message
+        )
+    }
 }
 
 impl<D: DistAlgorithm> MessageWithSender<D> {
@@ -306,6 +317,7 @@ impl<D: DistAlgorithm, F: Fn() -> TargetedMessage<D::Message, D::NodeUid>> Adver
             tmp.push(MessageWithSender::new(sender.clone(), tm));
         }
 
+        println!("Injecting random messages: {:?}", tmp);
         tmp
     }
 }
