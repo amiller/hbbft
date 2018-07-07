@@ -118,7 +118,7 @@ impl<D: DistAlgorithm> fmt::Debug for MessageWithSender<D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "<MessageWithSender[from={:?} to={:?}]{:?}>",
+            "MessageWithSender {{ sender: {:?}, tm: {:?} }}",
             self.sender, self.tm.target, self.tm.message
         )
     }
