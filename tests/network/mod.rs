@@ -209,19 +209,16 @@ pub struct RandomAdversary<D: DistAlgorithm, F> {
 
     /// Node ids seen by the adversary.
     known_node_ids: Vec<D::NodeUid>,
-
     /// Node ids under control of adversary
     known_adversarial_ids: Vec<D::NodeUid>,
 
     /// Internal queue for messages to be returned on the next `Adversary::step()` call
     outgoing: Vec<MessageWithSender<D>>,
-
     /// Generates random messages to be injected
     generator: F,
 
     /// Probability of a message replay
     p_replay: f32,
-
     /// Probability of a message injection
     p_inject: f32,
 }
@@ -236,7 +233,7 @@ impl<D: DistAlgorithm, F> RandomAdversary<D, F> {
         );
 
         RandomAdversary {
-            // the random adversary, true to its name, always schedules randomnly
+            // the random adversary, true to its name, always schedules randomly
             scheduler: MessageScheduler::Random,
             known_node_ids: Vec::new(),
             known_adversarial_ids: Vec::new(),
@@ -334,7 +331,7 @@ impl<D: DistAlgorithm, F: Fn() -> TargetedMessage<D::Message, D::NodeUid>> Adver
 
 /// A collection of `TestNode`s representing a network.
 ///
-/// Each TestNetwork type is tied to a specific adversary and a distributed algorithm. It consists
+/// Each `TestNetwork` type is tied to a specific adversary and a distributed algorithm. It consists
 /// of a set of nodes, some of which are controlled by the adversary and some of which may be
 /// observer nodes, as well as a set of threshold-cryptography public keys.
 ///
@@ -413,7 +410,7 @@ where
             adv_nodes,
         };
 
-        // inform the adversary over their nodes
+        // inform the adversary about their nodes
         network.adversary.init(&network.adv_nodes);
 
         let msgs = network.adversary.step();
