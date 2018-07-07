@@ -325,7 +325,7 @@ impl<D: DistAlgorithm, F: Fn() -> TargetedMessage<D::Message, D::NodeUid>> Adver
             }
         }
 
-        if tmp.is_empty() {
+        if !tmp.is_empty() {
             println!("Injecting random messages: {:?}", tmp);
         }
         tmp
